@@ -1,15 +1,22 @@
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 import tensorflow as tf
 import numpy as np
 from flask import Flask, request, render_template_string, jsonify
 from PIL import Image
 import io
-import os
 import random
 import time
 
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
 app = Flask(__name__)
 
-modelo = tf.keras.models.load_model("modelo_tomates.h5")
+modelo = tf.keras.models.load_model("modelo_tomates.h5", compile=False)
+modelo.make_predict_function()
 CLASES = ["Tomate_Deteriorado", "Tomate_Maduro"]
 
 # ─────────────────────────────────────────────
@@ -602,6 +609,18 @@ def index():
 
     return render_template_string(HTML)
 
+
+@app.route("/health")
+def health():
+    import os
+    modelo_existe = os.path.exists("modelo_tomates.h5")
+    cwd = os.getcwd()
+    archivos = os.listdir(".")
+    return jsonify({
+        "modelo_existe": modelo_existe,
+        "directorio": cwd,
+        "archivos": archivos
+    })
 
 @app.route("/sensor")
 def sensor():
