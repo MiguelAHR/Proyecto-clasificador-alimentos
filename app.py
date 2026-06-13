@@ -31,7 +31,7 @@ HTML = """
 </head>
 <body style="font-family:Arial; text-align:center; background:#0f172a; color:white;">
 
-    <h1>🍅 Clasificador de Tomates</h1>
+    <h1>Clasificador de Alimentos</h1>
 
     <form method="POST" enctype="multipart/form-data">
         <input type="file" name="imagen" required>
