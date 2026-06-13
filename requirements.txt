@@ -1,5 +1,4 @@
 flask
-tensorflow-cpu==2.15.0
-pillow
+tensorflow
 numpy
-gunicorn
+pillow
