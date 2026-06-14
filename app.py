@@ -4,12 +4,18 @@ from flask import Flask, request, render_template_string
 from PIL import Image
 import io
 import os
+import random
+from datetime import datetime
 
 app = Flask(__name__)
 
+# Cargar modelo
 modelo = tf.keras.models.load_model("modelo_tomates.h5")
 CLASES = ["Tomate_Deteriorado", "Tomate_Maduro"]
 
+# ─────────────────────────────────────────────
+# INTERFAZ WEB (Diseño mejorado)
+# ─────────────────────────────────────────────
 HTML = """
 <!DOCTYPE html>
 <html lang="es">
@@ -68,6 +74,8 @@ HTML = """
     .empty-state { padding: 2.5rem 0; text-align: center; }
     .empty-state i { font-size: 36px; color: var(--muted); display: block; margin-bottom: 8px; }
     .empty-state p { font-size: 14px; color: var(--muted); }
+    .loader { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; z-index: 1000; }
+    .loader.show { display: block; }
   </style>
 </head>
 <body>
@@ -77,7 +85,12 @@ HTML = """
   <p>Modelo CNN &middot; ESP32-CAM + DHT22 &middot; Tiempo real</p>
 </header>
 
-<form method="POST" enctype="multipart/form-data">
+<div class="loader" id="loader">
+  <i class="ti ti-loader" style="font-size: 40px; animation: spin 1s linear infinite;"></i>
+  <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+</div>
+
+<form method="POST" enctype="multipart/form-data" id="uploadForm">
 <div class="grid">
 
   <!-- COLUMNA IZQUIERDA -->
@@ -98,7 +111,7 @@ HTML = """
         <i class="ti ti-photo-edit"></i> Cambiar foto
       </button>
 
-      <button type="submit" class="btn primary">
+      <button type="submit" class="btn primary" onclick="showLoader()">
         <i class="ti ti-scan"></i> Analizar imagen
       </button>
     </div>
@@ -133,7 +146,7 @@ HTML = """
       </div>
       <div class="sensor-row">
         <span class="sensor-name"><i class="ti ti-clock"></i>Última lectura</span>
-        <span class="sensor-val" style="font-weight:400;color:var(--muted)">{% if temp %}hace 0 s{% else %}—{% endif %}</span>
+        <span class="sensor-val" style="font-weight:400;color:var(--muted)">{% if temp %}{{ timestamp }}{% else %}—{% endif %}</span>
       </div>
     </div>
   </div>
@@ -206,11 +219,26 @@ function handleFile(input) {
   };
   reader.readAsDataURL(file);
 }
+
+function showLoader() {
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput.files.length > 0) {
+    document.getElementById('loader').classList.add('show');
+  }
+}
+
+// Si ya hay un resultado, ocultar loader después de cargar
+window.addEventListener('load', function() {
+  document.getElementById('loader').classList.remove('show');
+});
 </script>
 </body>
 </html>
 """
 
+# ─────────────────────────────────────────────
+# FUNCIÓN DE PREDICCIÓN
+# ─────────────────────────────────────────────
 def predecir_imagen(img_bytes):
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     img = img.resize((224, 224))
@@ -221,24 +249,36 @@ def predecir_imagen(img_bytes):
     confianza = float(np.max(pred)) * 100
     return clase, round(confianza, 2)
 
+# ─────────────────────────────────────────────
+# RUTA PRINCIPAL
+# ─────────────────────────────────────────────
 @app.route("/", methods=["GET", "POST"])
 def index():
     resultado = None
     confianza = None
     temp = None
     hum = None
-
+    timestamp = None
+    
     if request.method == "POST":
         file = request.files["imagen"]
         img_bytes = file.read()
         resultado, confianza = predecir_imagen(img_bytes)
-        import random
+        
+        # DATOS SIMULADOS (para ESP32-CAM futuro)
         temp = round(random.uniform(18, 35), 1)
         hum = round(random.uniform(40, 90), 1)
+        timestamp = datetime.now().strftime("%H:%M:%S")
+    
+    return render_template_string(HTML, 
+                                 resultado=resultado, 
+                                 confianza=confianza,
+                                 temp=temp, 
+                                 hum=hum,
+                                 timestamp=timestamp)
 
-    return render_template_string(HTML,
-        resultado=resultado, confianza=confianza,
-        temp=temp, hum=hum)
-
+# ─────────────────────────────────────────────
+# INICIO
+# ─────────────────────────────────────────────
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
