@@ -7,13 +7,21 @@ import os
 
 app = Flask(__name__)
 
-# Cargar modelo
-modelo = tf.keras.models.load_model("modelo_tomates.h5")
+# ─────────────────────────────────────────────
+# MODELO (LAZY LOADING PARA EVITAR CRASH EN RENDER)
+# ─────────────────────────────────────────────
+modelo = None
+
+def cargar_modelo():
+    global modelo
+    if modelo is None:
+        modelo = tf.keras.models.load_model("modelo_tomates.h5")
+    return modelo
 
 CLASES = ["Tomate_Deteriorado", "Tomate_Maduro"]
 
 # ─────────────────────────────────────────────
-# INTERFAZ WEB (simple pero funcional)
+# INTERFAZ WEB
 # ─────────────────────────────────────────────
 HTML = """
 <!DOCTYPE html>
@@ -35,7 +43,7 @@ HTML = """
         <h2>Resultado: {{ resultado }}</h2>
         <h3>Confianza: {{ confianza }}%</h3>
 
-        <h3>📊 Datos del sensor DHT22 (IoT)</h3>
+        <h3>📊 Datos del sensor DHT22 (IoT simulado)</h3>
         <p>🌡 Temperatura: {{ temp }} °C</p>
         <p>💧 Humedad: {{ hum }} %</p>
     {% endif %}
@@ -48,13 +56,15 @@ HTML = """
 # FUNCIÓN DE PREDICCIÓN
 # ─────────────────────────────────────────────
 def predecir_imagen(img_bytes):
+    modelo = cargar_modelo()
+
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     img = img.resize((224, 224))
 
     arr = np.array(img) / 255.0
     arr = np.expand_dims(arr, axis=0)
 
-    pred = modelo.predict(arr)
+    pred = modelo.predict(arr, verbose=0)
 
     clase = CLASES[np.argmax(pred)]
     confianza = float(np.max(pred)) * 100
@@ -78,7 +88,7 @@ def index():
 
         resultado, confianza = predecir_imagen(img_bytes)
 
-        # 🔧 DATOS SIMULADOS (para ESP32-CAM futuro)
+        # 🔧 DATOS SIMULADOS (ESP32-CAM futuro)
         import random
         temp = round(random.uniform(18, 35), 1)
         hum = round(random.uniform(40, 90), 1)
@@ -93,7 +103,10 @@ def index():
 
 
 # ─────────────────────────────────────────────
-# INICIO
+# INICIO (RENDER COMPATIBLE)
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
