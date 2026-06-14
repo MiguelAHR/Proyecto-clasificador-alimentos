@@ -91,16 +91,20 @@ HTML = """
     <div class="card">
       <div class="lbl">Imagen de entrada</div>
 
-      <div class="upload-zone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <div class="upload-zone" id="dropzone" onclick="document.getElementById('fileInput').click()" {% if imagen_b64 %}style="display:none"{% endif %}>
         <i class="ti ti-photo-up"></i>
         <p>Haz clic para seleccionar</p>
         <small>JPG, PNG &middot; máx. 5 MB</small>
       </div>
 
-      <img id="preview" alt="Vista previa">
+      <img id="preview" alt="Vista previa"
+        {% if imagen_b64 %}
+          src="data:image/jpeg;base64,{{ imagen_b64 }}" style="display:block;margin-bottom:0.75rem"
+        {% endif %}>
       <input type="file" id="fileInput" name="imagen" accept="image/*" required onchange="handleFile(this)">
+      <input type="hidden" id="imagenBase64" name="imagen_b64">
 
-      <button type="button" class="btn" id="changeBtn" onclick="document.getElementById('fileInput').click()">
+      <button type="button" class="btn" id="changeBtn" onclick="document.getElementById('fileInput').click()" {% if not imagen_b64 %}style="display:none"{% endif %}>
         <i class="ti ti-photo-edit"></i> Cambiar foto
       </button>
 
@@ -209,6 +213,8 @@ function handleFile(input) {
     img.style.display = 'block';
     document.getElementById('dropzone').style.display = 'none';
     document.getElementById('changeBtn').style.display = 'flex';
+    // guardar base64 sin el prefijo "data:image/...;base64,"
+    document.getElementById('imagenBase64').value = e.target.result.split(',')[1];
   };
   reader.readAsDataURL(file);
 }
@@ -233,18 +239,20 @@ def index():
     confianza = None
     temp = None
     hum = None
+    imagen_b64 = None
 
     if request.method == "POST":
         file = request.files["imagen"]
         img_bytes = file.read()
         resultado, confianza = predecir_imagen(img_bytes)
+        imagen_b64 = request.form.get("imagen_b64", "")
         import random
         temp = round(random.uniform(18, 35), 1)
         hum = round(random.uniform(40, 90), 1)
 
     return render_template_string(HTML,
         resultado=resultado, confianza=confianza,
-        temp=temp, hum=hum)
+        temp=temp, hum=hum, imagen_b64=imagen_b64)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
