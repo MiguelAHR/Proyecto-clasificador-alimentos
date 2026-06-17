@@ -91,20 +91,16 @@ HTML = """
     <div class="card">
       <div class="lbl">Imagen de entrada</div>
 
-      <div class="upload-zone" id="dropzone" onclick="document.getElementById('fileInput').click()" {% if imagen_b64 %}style="display:none"{% endif %}>
+      <div class="upload-zone" id="dropzone" onclick="document.getElementById('fileInput').click()">
         <i class="ti ti-photo-up"></i>
         <p>Haz clic para seleccionar</p>
         <small>JPG, PNG &middot; máx. 5 MB</small>
       </div>
 
-      <img id="preview" alt="Vista previa"
-        {% if imagen_b64 %}
-          src="data:image/jpeg;base64,{{ imagen_b64 }}" style="display:block;margin-bottom:0.75rem"
-        {% endif %}>
+      <img id="preview" alt="Vista previa">
       <input type="file" id="fileInput" name="imagen" accept="image/*" required onchange="handleFile(this)">
-      <input type="hidden" id="imagenBase64" name="imagen_b64">
 
-      <button type="button" class="btn" id="changeBtn" onclick="document.getElementById('fileInput').click()" {% if not imagen_b64 %}style="display:none"{% endif %}>
+      <button type="button" class="btn" id="changeBtn" onclick="cambiarFoto()" style="display:none">
         <i class="ti ti-photo-edit"></i> Cambiar foto
       </button>
 
@@ -203,20 +199,52 @@ HTML = """
 </form>
 
 <script>
+// Al cargar la página: si hay resultado, restaurar imagen desde sessionStorage
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = sessionStorage.getItem('tomato_img');
+  {% if resultado %}
+  if (saved) {
+    const img = document.getElementById('preview');
+    img.src = saved;
+    img.style.display = 'block';
+    document.getElementById('dropzone').style.display = 'none';
+    document.getElementById('changeBtn').style.display = 'flex';
+  }
+  {% else %}
+  sessionStorage.removeItem('tomato_img');
+  {% endif %}
+});
+
 function handleFile(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
+    const dataUrl = e.target.result;
+    // Comprimir a 224x224 antes de guardar en sessionStorage
+    const canvas = document.createElement('canvas');
+    canvas.width = 224; canvas.height = 224;
+    const ctx = canvas.getContext('2d');
+    const tmpImg = new Image();
+    tmpImg.onload = () => {
+      ctx.drawImage(tmpImg, 0, 0, 224, 224);
+      const compressed = canvas.toDataURL('image/jpeg', 0.7);
+      sessionStorage.setItem('tomato_img', compressed);
+    };
+    tmpImg.src = dataUrl;
+
     const img = document.getElementById('preview');
-    img.src = e.target.result;
+    img.src = dataUrl;
     img.style.display = 'block';
     document.getElementById('dropzone').style.display = 'none';
     document.getElementById('changeBtn').style.display = 'flex';
-    // guardar base64 sin el prefijo "data:image/...;base64,"
-    document.getElementById('imagenBase64').value = e.target.result.split(',')[1];
   };
   reader.readAsDataURL(file);
+}
+
+function cambiarFoto() {
+  sessionStorage.removeItem('tomato_img');
+  document.getElementById('fileInput').click();
 }
 </script>
 </body>
@@ -239,20 +267,18 @@ def index():
     confianza = None
     temp = None
     hum = None
-    imagen_b64 = None
 
     if request.method == "POST":
         file = request.files["imagen"]
         img_bytes = file.read()
         resultado, confianza = predecir_imagen(img_bytes)
-        imagen_b64 = request.form.get("imagen_b64", "")
         import random
         temp = round(random.uniform(18, 35), 1)
         hum = round(random.uniform(40, 90), 1)
 
     return render_template_string(HTML,
         resultado=resultado, confianza=confianza,
-        temp=temp, hum=hum, imagen_b64=imagen_b64)
+        temp=temp, hum=hum)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
