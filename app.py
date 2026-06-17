@@ -8,7 +8,23 @@ import os
 app = Flask(__name__)
 
 modelo = None
-CLASES = ["Tomate_Deteriorado", "Tomate_Maduro"]
+CLASES = [
+    "Lechuga_Deteriorada",
+    "Lechuga_Fresca",
+    "Tomate_Deteriorado",
+    "Tomate_Maduro",
+    "Zanahoria_Deteriorada",
+    "Zanahoria_Fresca",
+]
+
+INFO_CLASES = {
+    "Lechuga_Fresca":        {"label": "Lechuga fresca",        "estado": "fresco"},
+    "Lechuga_Deteriorada":   {"label": "Lechuga deteriorada",   "estado": "deteriorado"},
+    "Tomate_Maduro":         {"label": "Tomate maduro",         "estado": "fresco"},
+    "Tomate_Deteriorado":    {"label": "Tomate deteriorado",    "estado": "deteriorado"},
+    "Zanahoria_Fresca":      {"label": "Zanahoria fresca",      "estado": "fresco"},
+    "Zanahoria_Deteriorada": {"label": "Zanahoria deteriorada", "estado": "deteriorado"},
+}
 
 def get_modelo():
     global modelo
@@ -150,32 +166,29 @@ HTML = """
       <div class="lbl">Resultado</div>
 
       {% if resultado %}
-        {% set isMaduro = resultado == 'Tomate_Maduro' %}
-        {% set c1 = confianza if isMaduro else (100 - confianza) %}
-        {% set c2 = 100 - c1 %}
+        {% set estado = info[resultado].estado %}
+        {% set label  = info[resultado].label %}
 
-        <div class="result-badge {{ 'badge-maduro' if isMaduro else 'badge-deteriorado' }}">
-          <i class="ti {{ 'ti-circle-check' if isMaduro else 'ti-circle-x' }}"></i>
-          {{ 'Tomate maduro' if isMaduro else 'Tomate deteriorado' }}
+        <div class="result-badge {{ 'badge-maduro' if estado == 'fresco' else 'badge-deteriorado' }}">
+          <i class="ti {{ 'ti-circle-check' if estado == 'fresco' else 'ti-circle-x' }}"></i>
+          {{ label }}
         </div>
 
-        <div class="lbl" style="margin-top:12px">Confianza del modelo</div>
+        <div class="lbl" style="margin-top:12px">Probabilidades por categoría</div>
 
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px">
-          <span>Tomate maduro</span><span>{{ c1 | round(1) }}%</span>
-        </div>
-        <div class="bar-track">
-          <div class="bar-fill bar-green" style="width:{{ c1 }}%"></div>
-        </div>
+        {% for clase, prob in probs.items() | sort(attribute='1', reverse=True) %}
+          {% set es = info[clase].estado %}
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px;margin-top:6px">
+            <span style="{{ 'font-weight:600' if clase == resultado else '' }}">{{ info[clase].label }}</span>
+            <span>{{ prob }}%</span>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill {{ 'bar-green' if es == 'fresco' else 'bar-red' }}"
+                 style="width:{{ prob }}%;{{ 'opacity:1' if clase == resultado else 'opacity:0.4' }}"></div>
+          </div>
+        {% endfor %}
 
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin:8px 0 3px">
-          <span>Tomate deteriorado</span><span>{{ c2 | round(1) }}%</span>
-        </div>
-        <div class="bar-track">
-          <div class="bar-fill bar-red" style="width:{{ c2 }}%"></div>
-        </div>
-
-        <div class="metric-grid">
+        <div class="metric-grid" style="margin-top:1rem">
           <div class="metric-card">
             <div class="metric-label">Confianza</div>
             <div class="metric-value">{{ confianza }}<span class="metric-unit">%</span></div>
@@ -256,10 +269,12 @@ def predecir_imagen(img_bytes):
     img = img.resize((224, 224))
     arr = np.array(img) / 255.0
     arr = np.expand_dims(arr, axis=0)
-    pred = get_modelo().predict(arr)
-    clase = CLASES[np.argmax(pred)]
-    confianza = float(np.max(pred)) * 100
-    return clase, round(confianza, 2)
+    pred = get_modelo().predict(arr)[0]
+    idx = int(np.argmax(pred))
+    clase = CLASES[idx]
+    confianza = float(pred[idx]) * 100
+    probs = {CLASES[i]: round(float(pred[i]) * 100, 1) for i in range(len(CLASES))}
+    return clase, round(confianza, 2), probs
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -267,18 +282,19 @@ def index():
     confianza = None
     temp = None
     hum = None
+    probs = None
 
     if request.method == "POST":
         file = request.files["imagen"]
         img_bytes = file.read()
-        resultado, confianza = predecir_imagen(img_bytes)
+        resultado, confianza, probs = predecir_imagen(img_bytes)
         import random
         temp = round(random.uniform(18, 35), 1)
         hum = round(random.uniform(40, 90), 1)
 
     return render_template_string(HTML,
         resultado=resultado, confianza=confianza,
-        temp=temp, hum=hum)
+        temp=temp, hum=hum, probs=probs, info=INFO_CLASES)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
